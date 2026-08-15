@@ -2,13 +2,31 @@
 
 Apartment Search receives Facebook group posts from Groups Watcher, scores them
 against your Montefiore/Sarona/HaHaskala 3 criteria, deduplicates already-seen
-posts, and optionally sends strong matches to Telegram.
+posts, and optionally sends strong matches to Telegram. The recommended
+receiver is the hosted Sites app in `site/`; the Python receiver remains
+available as a local fallback.
 
 Groups Watcher runs in your logged-in Chrome session and sends matching posts to
-Apartment Search through a local webhook. The optional Playwright source remains
-available as a fallback. Neither approach bypasses Facebook access controls.
+Apartment Search through a stable hosted webhook. The receiver stays online,
+but the Groups Watcher extension still requires Chrome and the computer to be
+running. The optional Playwright source remains available as a fallback.
+Neither approach bypasses Facebook access controls.
 
-## Setup
+## Hosted Sites receiver
+
+The hosted component provides:
+
+- a secret-protected Groups Watcher webhook;
+- durable D1 storage and duplicate detection;
+- the same free rule-based scoring criteria as the Python app;
+- an access-key-protected dashboard;
+- direct Facebook links on listing titles;
+- optional Telegram delivery for strong matches.
+
+See `site/README.md` for local development. Runtime secrets are managed by
+Sites and are never committed.
+
+## Local Python fallback
 
 ```bash
 python3 -m venv .venv

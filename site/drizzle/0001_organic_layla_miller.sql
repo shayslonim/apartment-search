@@ -1,0 +1,2 @@
+CREATE INDEX `idx_apartment_posts_received_at` ON `apartment_posts` (`received_at`);--> statement-breakpoint
+CREATE INDEX `idx_apartment_posts_decision_score` ON `apartment_posts` (`decision`,`score`);

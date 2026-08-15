@@ -1,0 +1,22 @@
+CREATE TABLE `apartment_posts` (
+	`id` text PRIMARY KEY NOT NULL,
+	`source` text NOT NULL,
+	`group_name` text,
+	`author` text,
+	`post_url` text,
+	`body` text NOT NULL,
+	`posted_at` text,
+	`received_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	`score` integer NOT NULL,
+	`decision` text NOT NULL,
+	`summary` text NOT NULL,
+	`price_ils` integer,
+	`listing_type` text NOT NULL,
+	`location_signal` text NOT NULL,
+	`shelter_signal` text NOT NULL,
+	`positives` text NOT NULL,
+	`negatives` text NOT NULL,
+	`unknowns` text NOT NULL,
+	`telegram_status` text DEFAULT 'disabled' NOT NULL,
+	`raw_payload` text NOT NULL
+);

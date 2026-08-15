@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import os
 import sys
 from pathlib import Path
-from typing import List, Optional
 
+from .analysis_worker import build_worker
 from .config import ConfigError, load_config, resolve_config_path, write_default_config
 from .groups_watcher import serve as serve_groups_watcher
 from .models import ApartmentPost, Criteria
@@ -15,7 +17,7 @@ from .scoring import score_post
 from .watcher import run_once
 
 
-def main(argv: Optional[List[str]] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     """Run the Apartment Search CLI."""
 
     parser = _build_parser()
@@ -89,6 +91,51 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     score_parser.set_defaults(handler=_handle_score)
 
+    analyze_parser = subparsers.add_parser(
+        "analyze-jobs",
+        help="process hosted posts with the local Ollama analyzer",
+    )
+    analyze_parser.add_argument(
+        "--site-url",
+        default=os.getenv(
+            "APARTMENT_SEARCH_SITE_URL",
+            "https://apartment-search.shaysks.chatgpt.site",
+        ),
+        help="hosted Apartment Search URL",
+    )
+    analyze_parser.add_argument(
+        "--secret-env",
+        default="LOCAL_ANALYZER_SECRET",
+        help="environment variable containing the analyzer secret",
+    )
+    analyze_parser.add_argument(
+        "--model",
+        default=os.getenv("OLLAMA_MODEL", "qwen3:8b"),
+        help="local Ollama model",
+    )
+    analyze_parser.add_argument(
+        "--ollama-url",
+        default=os.getenv("OLLAMA_URL", "http://127.0.0.1:11434"),
+        help="local Ollama API URL",
+    )
+    analyze_parser.add_argument(
+        "--cache-path",
+        default=".apartment-search/map-cache.sqlite3",
+        help="persistent geocoding and route cache",
+    )
+    analyze_parser.add_argument(
+        "--poll-seconds",
+        type=int,
+        default=30,
+        help="seconds to wait when the hosted queue is empty",
+    )
+    analyze_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="claim at most one post and exit",
+    )
+    analyze_parser.set_defaults(handler=_handle_analyze_jobs)
+
     return parser
 
 
@@ -149,6 +196,33 @@ def _handle_score(args: argparse.Namespace) -> None:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
     else:
         print(result.summary)
+
+
+def _handle_analyze_jobs(args: argparse.Namespace) -> None:
+    secret = os.getenv(args.secret_env)
+    if not secret:
+        raise SystemExit(f"Missing analyzer secret in {args.secret_env}")
+    if args.poll_seconds < 1:
+        raise SystemExit("--poll-seconds must be at least 1")
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    worker, cache = build_worker(
+        site_url=args.site_url,
+        secret=secret,
+        model_name=args.model,
+        ollama_url=args.ollama_url,
+        cache_path=Path(args.cache_path).expanduser().resolve(),
+    )
+    try:
+        if args.once:
+            worker.run_once()
+        else:
+            worker.run_forever(poll_seconds=args.poll_seconds)
+    finally:
+        cache.close()
 
 
 if __name__ == "__main__":

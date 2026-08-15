@@ -1,151 +1,86 @@
 # Apartment Search
 
-Apartment Search receives Facebook group posts from Groups Watcher, scores them
-against your Montefiore/Sarona/HaHaskala 3 criteria, deduplicates already-seen
-posts, and optionally sends strong matches to Telegram. The recommended
-receiver is the hosted Sites app in `site/`; the Python receiver remains
-available as a local fallback.
+Apartment Search receives Facebook apartment posts from Groups Watcher, queues
+them in a hosted site, analyzes them with a local Ollama model, calculates real
+walking routes, deduplicates posts, and shows every completed result in one of
+three categories:
 
-Groups Watcher runs in your logged-in Chrome session and sends matching posts to
-Apartment Search through a stable hosted webhook. The receiver stays online,
-but the Groups Watcher extension still requires Chrome and the computer to be
-running. The optional Playwright source remains available as a fallback.
-Neither approach bypasses Facebook access controls.
+- **Recommended**: strong, actionable matches.
+- **Just Okay**: plausible listings with compromises or missing information.
+- **Not Really**: listings that materially miss the search.
 
-## Hosted Sites receiver
+## Production flow
 
-The hosted component provides:
+1. The Groups Watcher browser extension sends a post to the stable hosted
+   webhook.
+2. The site authenticates, normalizes, deduplicates, and stores the post as a
+   pending analysis job.
+3. A local worker on the Mac claims the job over an authenticated outbound
+   connection. Ollama remains private on `localhost`.
+4. `qwen3:8b` extracts listing type, price, date, location, condition, and
+   protection facts in a constrained JSON format.
+5. The worker geocodes the listing with OpenStreetMap and obtains pedestrian
+   route time and distance to HaHaskala 3 and Sarona Market.
+6. The model applies the personal search guidelines to the post, extracted
+   facts, and verified routes.
+7. The hosted site validates and stores the final structured result. Recommended
+   listings can optionally be sent to Telegram.
 
-- a secret-protected Groups Watcher webhook;
-- durable D1 storage and duplicate detection;
-- the same free rule-based scoring criteria as the Python app;
-- an access-key-protected dashboard;
-- direct Facebook links on listing titles;
-- optional Telegram delivery for strong matches.
+The hosted receiver remains online when the Mac is off. The local analysis queue
+resumes when the Mac is back on. Groups Watcher itself still requires Brave or
+Chrome and the Mac to be running to detect new Facebook posts.
 
-See `site/README.md` for local development. Runtime secrets are managed by
-Sites and are never committed.
+## Local analyzer
 
-## Local Python fallback
+Requirements:
+
+- Ollama running on `http://127.0.0.1:11434`.
+- The `qwen3:8b` model.
+- `LOCAL_ANALYZER_SECRET` matching the hosted Sites secret.
+
+Install the Python package:
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install ".[dev]"
+.venv/bin/pip install ".[dev]"
 ```
 
-For the optional Playwright fallback:
+Run one queued job:
 
 ```bash
-python -m pip install ".[dev,facebook]"
-python -m playwright install chromium
+LOCAL_ANALYZER_SECRET="..." .venv/bin/apartment-search analyze-jobs --once
 ```
 
-## Configure
-
-Copy the starter config:
+Run continuously:
 
 ```bash
-cp config.example.json config.json
+LOCAL_ANALYZER_SECRET="..." .venv/bin/apartment-search analyze-jobs
 ```
 
-Create a webhook secret and keep the terminal session open:
+Geocoding and route responses are cached in
+`.apartment-search/map-cache.sqlite3`. The worker identifies itself to public
+OpenStreetMap services, limits request frequency, and does not disable TLS
+verification.
 
-```bash
-export GROUPS_WATCHER_WEBHOOK_SECRET="replace-with-a-long-random-value"
-```
+## Hosted site
 
-Start Apartment Search in dry-run mode for the first test:
+The Sites app in `site/` provides the webhook, D1 queue, worker APIs, protected
+dashboard, direct Facebook links, and optional Telegram delivery. Runtime
+secrets are managed by Sites and are never committed.
 
-```bash
-apartment-search serve-webhook --config config.json --dry-run
-```
-
-In Groups Watcher, choose **Custom Webhook** and enter:
-
-```text
-http://127.0.0.1:8787/webhooks/groups-watcher?token=YOUR_SECRET
-```
-
-Replace `YOUR_SECRET` with the same value exported above. The receiver accepts
-the documented single-post and batched payload formats. If the extension refuses
-a localhost URL, use an HTTPS tunnel and keep the token in the webhook URL.
-
-Use broad Groups Watcher keywords so Apartment Search performs the detailed
-filtering. Keep auto-commenting disabled.
-
-`json` sources remain available for pasted/exported posts while testing:
-
-```json
-[
-  {
-    "text": "Montefiore room with roommates, renovated, 3800 ILS, September 2026, Mamad in apartment",
-    "url": "https://example.com/post/1"
-  }
-]
-```
-
-The optional `facebook_browser` source can still read a Facebook group directly:
-
-```json
-{
-  "name": "facebook-group-example",
-  "type": "facebook_browser",
-  "url": "https://www.facebook.com/groups/YOUR_GROUP"
-}
-```
-
-Telegram is optional. To enable it, set `"telegram.enabled": true` and export:
-
-```bash
-export TELEGRAM_BOT_TOKEN="..."
-export TELEGRAM_CHAT_ID="..."
-```
-
-OpenAI scoring is optional. The local rule scorer works without an API key. To
-enable AI scoring, set `"scoring.use_openai": true` and export:
-
-```bash
-export OPENAI_API_KEY="..."
-```
-
-## Run
-
-Score one pasted post:
-
-```bash
-apartment-search score "Montefiore room, renovated, 3800 ILS, September 2026, Mamad" --json
-```
-
-Run a dry scan without sending Telegram messages or marking posts seen:
-
-```bash
-apartment-search scan --config config.json --dry-run
-```
-
-First Playwright fallback run, with time to complete login:
-
-```bash
-apartment-search scan --config config.json --login --dry-run
-```
-
-When Telegram is configured and you want to mark posts as seen:
-
-```bash
-apartment-search serve-webhook --config config.json
-```
+See `site/README.md` for hosted development and environment details.
 
 ## Test
 
 ```bash
-pytest
+.venv/bin/pytest
+.venv/bin/ruff check src/apartment_search/local_analyzer.py \
+  src/apartment_search/analysis_worker.py tests/test_local_analyzer.py
+cd site && npm test && npm run lint
 ```
 
-## Notes
+## Legacy fallbacks
 
-- Deduplication is stored in `.apartment-search/seen.sqlite3`.
-- The webhook health check is available at `http://127.0.0.1:8787/health`.
-- Groups Watcher and this receiver must both be running to collect posts.
-- Facebook markup changes often, so the browser scraper is intentionally small
-  and heuristic-based.
-- Keep tokens and `.apartment-search/` out of git.
+The earlier local JSON, Playwright, local webhook, and deterministic scoring
+commands remain available for isolated testing. They are not part of the
+production Groups Watcher analysis flow.

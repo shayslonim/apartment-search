@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const apartmentPosts = sqliteTable(
   "apartment_posts",
@@ -24,12 +24,36 @@ export const apartmentPosts = sqliteTable(
     unknowns: text("unknowns").notNull(),
     telegramStatus: text("telegram_status").notNull().default("disabled"),
     rawPayload: text("raw_payload").notNull(),
+    analysisStatus: text("analysis_status").notNull().default("pending"),
+    analysisAttempts: integer("analysis_attempts").notNull().default(0),
+    analysisClaimId: text("analysis_claim_id"),
+    analysisWorker: text("analysis_worker"),
+    analysisClaimedAt: text("analysis_claimed_at"),
+    analyzedAt: text("analyzed_at"),
+    analysisModel: text("analysis_model"),
+    locationText: text("location_text"),
+    geocodedAddress: text("geocoded_address"),
+    latitude: real("latitude"),
+    longitude: real("longitude"),
+    locationConfidence: text("location_confidence"),
+    conditionSignal: text("condition_signal"),
+    moveInSignal: text("move_in_signal"),
+    walkToWorkMinutes: integer("walk_to_work_minutes"),
+    walkToWorkMeters: integer("walk_to_work_meters"),
+    walkToSaronaMinutes: integer("walk_to_sarona_minutes"),
+    walkToSaronaMeters: integer("walk_to_sarona_meters"),
+    analysisPayload: text("analysis_payload"),
+    analysisError: text("analysis_error"),
   },
   (table) => [
     index("idx_apartment_posts_received_at").on(table.receivedAt),
     index("idx_apartment_posts_decision_score").on(
       table.decision,
       table.score,
+    ),
+    index("idx_apartment_posts_analysis_queue").on(
+      table.analysisStatus,
+      table.receivedAt,
     ),
   ],
 );

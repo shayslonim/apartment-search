@@ -5,13 +5,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "apartment-search"
 version = "0.1.0"
-description = "Score Facebook apartment listings received from Groups Watcher."
+description = "Analyze Facebook apartment listings with a local LLM and walking routes."
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [
   { name = "Apartment Search contributors" }
 ]
-dependencies = []
+dependencies = [
+  "certifi>=2024.2.2",
+]
 
 [project.optional-dependencies]
 facebook = [

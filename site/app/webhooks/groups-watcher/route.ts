@@ -1,7 +1,6 @@
 import {
   ensureApartmentSchema,
-  insertApartment,
-  updateTelegramStatus,
+  insertPendingApartment,
 } from "@/db/apartments";
 import { secureEqual, webhookToken } from "@/lib/auth";
 import { requireEnvironmentValue } from "@/lib/env";
@@ -10,8 +9,6 @@ import {
   postId,
   postsFromPayload,
 } from "@/lib/groups-watcher";
-import { scorePost } from "@/lib/scoring";
-import { sendTelegramMatch } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
@@ -50,25 +47,16 @@ export async function POST(request: Request): Promise<Response> {
     await ensureApartmentSchema();
     let processed = 0;
     let skippedSeen = 0;
-    let sendCandidates = 0;
-    let sent = 0;
 
     for (const post of posts) {
-      const score = scorePost(post);
       const id = await postId(post);
-      const inserted = await insertApartment(id, post, score);
+      const inserted = await insertPendingApartment(id, post);
       if (!inserted) {
         skippedSeen += 1;
         continue;
       }
 
       processed += 1;
-      if (score.decision === "send") {
-        sendCandidates += 1;
-        const telegramStatus = await sendTelegramMatch(post, score);
-        await updateTelegramStatus(id, telegramStatus);
-        if (telegramStatus === "sent") sent += 1;
-      }
     }
 
     return Response.json({
@@ -76,8 +64,7 @@ export async function POST(request: Request): Promise<Response> {
       accepted: posts.length,
       processed,
       skipped_seen: skippedSeen,
-      send_candidates: sendCandidates,
-      sent,
+      queued_for_analysis: processed,
     });
   } catch (error) {
     if (error instanceof GroupsWatcherPayloadError) {

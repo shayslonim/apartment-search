@@ -8,6 +8,10 @@
   --background: #f4f6f3;
   --accent: #146c43;
   --accent-soft: #e5f1e9;
+  --okay: #9a6515;
+  --okay-soft: #fbf1dd;
+  --not-really: #6b5b61;
+  --not-really-soft: #f1ecee;
 }
 
 * { box-sizing: border-box; }
@@ -66,7 +70,7 @@ h3 { margin-bottom: 4px; font-size: 16px; }
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin: 28px 0 34px;
   border-block: 1px solid var(--line);
 }
@@ -85,6 +89,33 @@ h3 { margin-bottom: 4px; font-size: 16px; }
 
 .section-heading { padding: 20px 22px; border-bottom: 1px solid var(--line); }
 
+.category-section { border-bottom: 1px solid var(--line); }
+.category-section:last-child { border-bottom: 0; }
+.category-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 11px 22px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+}
+.category-heading h2 { font-size: 16px; }
+.category-heading span {
+  min-width: 28px;
+  color: var(--muted);
+  font: 700 13px/1 var(--font-geist-mono), monospace;
+  text-align: right;
+}
+.category-just_okay .category-heading {
+  border-left-color: var(--okay);
+  background: var(--okay-soft);
+}
+.category-not_really .category-heading {
+  border-left-color: var(--not-really);
+  background: var(--not-really-soft);
+}
+
 button {
   min-height: 36px;
   padding: 0 14px;
@@ -102,7 +133,7 @@ button:disabled { cursor: wait; opacity: 0.65; }
 
 .listing-row {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) 130px 120px;
+  grid-template-columns: 92px minmax(0, 1fr) 110px 170px 110px;
   align-items: center;
   gap: 20px;
   min-height: 112px;
@@ -123,12 +154,25 @@ button:disabled { cursor: wait; opacity: 0.65; }
   color: var(--accent);
   font: 700 28px/1 var(--font-geist-mono), monospace;
 }
+.category-just_okay .score-cell strong { color: var(--okay); }
+.category-not_really .score-cell strong { color: var(--not-really); }
 .score-cell span { color: var(--muted); font-size: 12px; }
 .listing-copy p {
   margin-bottom: 7px;
   color: #48514b;
   font-size: 14px;
   line-height: 1.45;
+}
+.listing-copy .analysis-summary {
+  margin-bottom: 5px;
+  color: var(--ink);
+  font-weight: 600;
+}
+.listing-copy .post-body {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 .listing-copy small { color: var(--muted); }
 .listing-title-link {
@@ -143,6 +187,15 @@ button:disabled { cursor: wait; opacity: 0.65; }
   text-decoration-color: var(--accent);
 }
 .price { font-size: 14px; }
+.walking-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.walking-cell span { display: flex; flex-direction: column; gap: 2px; }
+.walking-cell strong { color: var(--ink); font-size: 11px; }
 .protection {
   width: fit-content;
   padding: 5px 8px;
@@ -167,6 +220,20 @@ button:disabled { cursor: wait; opacity: 0.65; }
 }
 
 .empty-state strong { color: var(--ink); }
+.empty-category {
+  padding: 24px 22px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.map-attribution {
+  padding-top: 14px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+.map-attribution a { color: inherit; }
+.map-attribution a:hover { color: var(--accent); }
 
 .login-shell {
   display: grid;
@@ -222,16 +289,17 @@ button:disabled { cursor: wait; opacity: 0.65; }
   .shell { width: min(100% - 24px, 620px); padding-top: 20px; }
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metrics div { padding-left: 0; }
-  .metrics div:nth-child(2) { border-right: 0; }
-  .metrics div:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+  .metrics div:nth-child(even) { border-right: 0; }
+  .metrics div:not(:nth-last-child(-n + 2)) { border-bottom: 1px solid var(--line); }
   .listing-header { display: none; }
   .listing-row {
     grid-template-columns: 72px minmax(0, 1fr);
     gap: 14px;
     padding: 18px;
   }
-  .price, .protection { grid-column: 2; }
+  .price, .walking-cell, .protection { grid-column: 2; }
   .price { margin-top: -6px; }
+  .walking-cell { flex-direction: row; gap: 20px; }
   .protection { margin-top: -8px; }
 }
 

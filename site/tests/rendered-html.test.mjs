@@ -12,9 +12,12 @@ test("build contains the Apartment Search worker", async () => {
     await readFile(new URL(".openai/hosting.json", root), "utf8"),
   );
 
-  assert.match(page, /Match inbox/);
+  assert.match(page, /AI-ranked results/);
   assert.match(page, /listApartments/);
   assert.match(page, /listing-title-link/);
+  assert.match(page, /Recommended/);
+  assert.match(page, /Just Okay/);
+  assert.match(page, /Not Really/);
   assert.doesNotMatch(page, /SkeletonPreview|codex-preview/);
   assert.match(layout, /title: "Apartment Search"/);
   assert.equal(hosting.d1, "DB");

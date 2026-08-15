@@ -1,11 +1,5 @@
 {
-  "sources": [
-    {
-      "name": "sample-posts",
-      "type": "json",
-      "path": "sample_posts.json"
-    }
-  ],
+  "sources": [],
   "criteria": {
     "work_address": "HaHaskala 3, Tel Aviv",
     "preferred_areas": [
@@ -40,5 +34,12 @@
     "scrolls": 4,
     "wait_seconds": 3,
     "wait_for_login": false
+  },
+  "groups_watcher": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 8787,
+    "path": "/webhooks/groups-watcher",
+    "secret_env": "GROUPS_WATCHER_WEBHOOK_SECRET"
   }
 }

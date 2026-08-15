@@ -60,6 +60,17 @@ class FacebookConfig:
 
 
 @dataclass(frozen=True)
+class GroupsWatcherConfig:
+    """Groups Watcher webhook settings."""
+
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 8787
+    path: str = "/webhooks/groups-watcher"
+    secret_env: str = "GROUPS_WATCHER_WEBHOOK_SECRET"
+
+
+@dataclass(frozen=True)
 class AppConfig:
     """Application configuration."""
 
@@ -69,6 +80,7 @@ class AppConfig:
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     facebook: FacebookConfig = field(default_factory=FacebookConfig)
+    groups_watcher: GroupsWatcherConfig = field(default_factory=GroupsWatcherConfig)
     base_dir: Path = Path(".")
 
 
@@ -102,6 +114,13 @@ def default_config() -> Dict[str, Any]:
             "wait_seconds": 3,
             "wait_for_login": False,
         },
+        "groups_watcher": {
+            "enabled": False,
+            "host": "127.0.0.1",
+            "port": 8787,
+            "path": "/webhooks/groups-watcher",
+            "secret_env": "GROUPS_WATCHER_WEBHOOK_SECRET",
+        },
     }
 
 
@@ -130,8 +149,6 @@ def load_config(path: Path) -> AppConfig:
         raise ConfigError("Config must be a JSON object")
 
     sources = _load_sources(data.get("sources", []))
-    if not sources:
-        raise ConfigError("Config must include at least one source")
 
     criteria = Criteria(
         **_merged_section(default_config()["criteria"], data, "criteria")
@@ -148,6 +165,16 @@ def load_config(path: Path) -> AppConfig:
     facebook = FacebookConfig(
         **_merged_section(default_config()["facebook"], data, "facebook")
     )
+    groups_watcher = GroupsWatcherConfig(
+        **_merged_section(
+            default_config()["groups_watcher"], data, "groups_watcher"
+        )
+    )
+    _validate_groups_watcher(groups_watcher)
+    if not sources and not groups_watcher.enabled:
+        raise ConfigError(
+            "Config must include at least one source or enable groups_watcher"
+        )
     return AppConfig(
         sources=sources,
         criteria=criteria,
@@ -155,6 +182,7 @@ def load_config(path: Path) -> AppConfig:
         telegram=telegram,
         storage=storage,
         facebook=facebook,
+        groups_watcher=groups_watcher,
         base_dir=path.parent,
     )
 
@@ -225,3 +253,26 @@ def _optional_str(value: Any) -> Optional[str]:
     if not isinstance(value, str):
         raise ConfigError("Expected a string value")
     return value
+
+
+def _validate_groups_watcher(config: GroupsWatcherConfig) -> None:
+    if not isinstance(config.enabled, bool):
+        raise ConfigError("groups_watcher.enabled must be true or false")
+    if not isinstance(config.host, str) or not config.host:
+        raise ConfigError("groups_watcher.host must not be empty")
+    if (
+        isinstance(config.port, bool)
+        or not isinstance(config.port, int)
+        or not 1 <= config.port <= 65535
+    ):
+        raise ConfigError("groups_watcher.port must be between 1 and 65535")
+    if (
+        not isinstance(config.path, str)
+        or not config.path.startswith("/")
+        or "?" in config.path
+    ):
+        raise ConfigError(
+            "groups_watcher.path must start with '/' and must not contain a query"
+        )
+    if not isinstance(config.secret_env, str) or not config.secret_env:
+        raise ConfigError("groups_watcher.secret_env must not be empty")

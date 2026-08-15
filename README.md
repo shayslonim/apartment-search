@@ -1,37 +1,62 @@
 # Apartment Search
 
-Apartment Search is a local MVP for watching Tel Aviv apartment posts, scoring
-them against your Montefiore/Sarona/HaHaskala 3 criteria, deduplicating
-already-seen posts, and optionally sending strong matches to Telegram.
+Apartment Search receives Facebook group posts from Groups Watcher, scores them
+against your Montefiore/Sarona/HaHaskala 3 criteria, deduplicates already-seen
+posts, and optionally sends strong matches to Telegram.
 
-It does not bypass Facebook login or access controls. For Facebook sources it
-opens a normal local Chromium profile through Playwright; you log in yourself,
-and the watcher only reads posts visible to that browser session.
+Groups Watcher runs in your logged-in Chrome session and sends matching posts to
+Apartment Search through a local webhook. The optional Playwright source remains
+available as a fallback. Neither approach bypasses Facebook access controls.
 
 ## Setup
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python -m pip install ".[dev]"
 ```
 
-For Facebook browser scraping:
+For the optional Playwright fallback:
 
 ```bash
-python -m pip install -e ".[dev,facebook]"
+python -m pip install ".[dev,facebook]"
 python -m playwright install chromium
 ```
 
 ## Configure
 
-Copy the starter config and edit the source URLs:
+Copy the starter config:
 
 ```bash
 cp config.example.json config.json
 ```
 
-Use `json` sources for pasted/exported posts while testing:
+Create a webhook secret and keep the terminal session open:
+
+```bash
+export GROUPS_WATCHER_WEBHOOK_SECRET="replace-with-a-long-random-value"
+```
+
+Start Apartment Search in dry-run mode for the first test:
+
+```bash
+apartment-search serve-webhook --config config.json --dry-run
+```
+
+In Groups Watcher, choose **Custom Webhook** and enter:
+
+```text
+http://127.0.0.1:8787/webhooks/groups-watcher?token=YOUR_SECRET
+```
+
+Replace `YOUR_SECRET` with the same value exported above. The receiver accepts
+the documented single-post and batched payload formats. If the extension refuses
+a localhost URL, use an HTTPS tunnel and keep the token in the webhook URL.
+
+Use broad Groups Watcher keywords so Apartment Search performs the detailed
+filtering. Keep auto-commenting disabled.
+
+`json` sources remain available for pasted/exported posts while testing:
 
 ```json
 [
@@ -42,7 +67,7 @@ Use `json` sources for pasted/exported posts while testing:
 ]
 ```
 
-Use `facebook_browser` sources for Facebook group/search pages:
+The optional `facebook_browser` source can still read a Facebook group directly:
 
 ```json
 {
@@ -80,7 +105,7 @@ Run a dry scan without sending Telegram messages or marking posts seen:
 apartment-search scan --config config.json --dry-run
 ```
 
-First Facebook run, with time to complete login:
+First Playwright fallback run, with time to complete login:
 
 ```bash
 apartment-search scan --config config.json --login --dry-run
@@ -89,7 +114,7 @@ apartment-search scan --config config.json --login --dry-run
 When Telegram is configured and you want to mark posts as seen:
 
 ```bash
-apartment-search scan --config config.json
+apartment-search serve-webhook --config config.json
 ```
 
 ## Test
@@ -101,6 +126,8 @@ pytest
 ## Notes
 
 - Deduplication is stored in `.apartment-search/seen.sqlite3`.
+- The webhook health check is available at `http://127.0.0.1:8787/health`.
+- Groups Watcher and this receiver must both be running to collect posts.
 - Facebook markup changes often, so the browser scraper is intentionally small
   and heuristic-based.
 - Keep tokens and `.apartment-search/` out of git.

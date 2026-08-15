@@ -21,3 +21,21 @@ def test_load_config_requires_sources(tmp_path):
 
     with pytest.raises(ConfigError, match="at least one source"):
         load_config(path)
+
+
+def test_load_config_allows_webhook_only_mode(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text(
+        json.dumps(
+            {
+                "sources": [],
+                "groups_watcher": {"enabled": True, "port": 8787},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(path)
+
+    assert config.sources == []
+    assert config.groups_watcher.enabled is True

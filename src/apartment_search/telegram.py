@@ -74,6 +74,11 @@ def format_telegram_message(post: ApartmentPost, score: ScoreResult) -> str:
         f"Apartment match: {score.score}/100 ({score.decision.value})",
         score.summary,
     ]
+    group_name = post.raw.get("group_name")
+    if group_name:
+        lines.append(f"Group: {group_name}")
+    if post.author:
+        lines.append(f"Posted by: {post.author}")
     if score.price_ils:
         lines.append(f"Price: {score.price_ils} ILS")
     lines.append(f"Location: {score.location_signal}")

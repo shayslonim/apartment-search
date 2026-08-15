@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import Iterable, List
 
 from .analyzer import analyze_post
 from .config import AppConfig, resolve_relative
@@ -50,45 +50,59 @@ def run_once(
 ) -> RunSummary:
     """Run one scan over all configured sources."""
 
-    summary = RunSummary()
+    posts: List[ApartmentPost] = []
+    source_errors: List[str] = []
+    for source in config.sources:
+        try:
+            source_posts = fetch_posts(source, config, login=login)
+        except SourceError as exc:
+            source_errors.append(str(exc))
+            continue
+        if limit > 0:
+            source_posts = source_posts[:limit]
+        posts.extend(source_posts)
+
+    summary = process_posts(config, posts, dry_run=dry_run)
+    summary.source_errors.extend(source_errors)
+    return summary
+
+
+def process_posts(
+    config: AppConfig,
+    posts: Iterable[ApartmentPost],
+    dry_run: bool = False,
+) -> RunSummary:
+    """Score, deduplicate, and optionally deliver normalized posts."""
+
+    posts = list(posts)
+    summary = RunSummary(fetched=len(posts))
     store_path = resolve_relative(config.base_dir, config.storage.path)
     notifier = TelegramNotifier.from_config(config.telegram)
 
     with SeenStore(Path(store_path)) as store:
-        for source in config.sources:
-            try:
-                posts = fetch_posts(source, config, login=login)
-            except SourceError as exc:
-                summary.source_errors.append(str(exc))
+        for post in posts:
+            if store.has_seen(post):
+                summary.skipped_seen += 1
                 continue
 
-            if limit > 0:
-                posts = posts[:limit]
-            summary.fetched += len(posts)
+            score = analyze_post(post, config.criteria, config.scoring)
+            processed = ProcessedPost(post=post, score=score)
 
-            for post in posts:
-                if store.has_seen(post):
-                    summary.skipped_seen += 1
-                    continue
+            if score.decision == Decision.SEND and notifier and not dry_run:
+                try:
+                    notifier.send(post, score)
+                    processed.delivered = True
+                except TelegramError as exc:
+                    processed.error = str(exc)
 
-                score = analyze_post(post, config.criteria, config.scoring)
-                processed = ProcessedPost(post=post, score=score)
+            summary.processed.append(processed)
 
-                if score.decision == Decision.SEND and notifier and not dry_run:
-                    try:
-                        notifier.send(post, score)
-                        processed.delivered = True
-                    except TelegramError as exc:
-                        processed.error = str(exc)
-
-                summary.processed.append(processed)
-
-                should_mark_seen = not dry_run and (
-                    score.decision != Decision.SEND
-                    or notifier is None
-                    or processed.delivered
-                )
-                if should_mark_seen:
-                    store.mark_seen(post, score)
+            should_mark_seen = not dry_run and (
+                score.decision != Decision.SEND
+                or notifier is None
+                or processed.delivered
+            )
+            if should_mark_seen:
+                store.mark_seen(post, score)
 
     return summary

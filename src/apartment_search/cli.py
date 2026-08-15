@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from .config import ConfigError, load_config, resolve_config_path, write_default_config
+from .groups_watcher import serve as serve_groups_watcher
 from .models import ApartmentPost, Criteria
 from .scoring import score_post
 from .watcher import run_once
@@ -61,6 +62,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     scan_parser.set_defaults(handler=_handle_scan)
 
+    webhook_parser = subparsers.add_parser(
+        "serve-webhook",
+        help="receive Groups Watcher webhook deliveries",
+    )
+    webhook_parser.add_argument("--config", default="config.json", help="config path")
+    webhook_parser.add_argument("--host", help="override webhook bind host")
+    webhook_parser.add_argument(
+        "--port",
+        type=int,
+        help="override webhook bind port",
+    )
+    webhook_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="process posts without sending Telegram messages or marking them seen",
+    )
+    webhook_parser.set_defaults(handler=_handle_serve_webhook)
+
     score_parser = subparsers.add_parser("score", help="score one pasted post")
     score_parser.add_argument("text", help="post text")
     score_parser.add_argument(
@@ -111,6 +130,16 @@ def _handle_scan(args: argparse.Namespace) -> None:
     )
     for error in summary.source_errors:
         print(f"Source error: {error}", file=sys.stderr)
+
+
+def _handle_serve_webhook(args: argparse.Namespace) -> None:
+    config = load_config(resolve_config_path(args.config))
+    serve_groups_watcher(
+        config,
+        dry_run=args.dry_run,
+        host=args.host,
+        port=args.port,
+    )
 
 
 def _handle_score(args: argparse.Namespace) -> None:

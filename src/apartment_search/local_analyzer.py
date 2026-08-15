@@ -100,6 +100,18 @@ EXTRACTION_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+SHELTER_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "shelter_signal": {
+            "type": "string",
+            "enum": ["mamad", "shelter", "none", "unknown"],
+        }
+    },
+    "required": ["shelter_signal"],
+    "additionalProperties": False,
+}
+
 VERDICT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -110,6 +122,10 @@ VERDICT_SCHEMA: dict[str, Any] = {
         "score": {"type": "integer", "minimum": 0, "maximum": 100},
         "summary": {"type": "string"},
         "location_signal": {"type": "string"},
+        "shelter_signal": {
+            "type": "string",
+            "enum": ["mamad", "shelter", "none", "unknown"],
+        },
         "positives": {"type": "array", "items": {"type": "string"}},
         "concerns": {"type": "array", "items": {"type": "string"}},
         "unknowns": {"type": "array", "items": {"type": "string"}},
@@ -119,6 +135,7 @@ VERDICT_SCHEMA: dict[str, Any] = {
         "score",
         "summary",
         "location_signal",
+        "shelter_signal",
         "positives",
         "concerns",
         "unknowns",
@@ -257,7 +274,7 @@ class NominatimGeocoder:
         self.last_request_at = 0.0
 
     def geocode(self, query: str) -> Place | None:
-        normalized = query.strip()
+        normalized = canonicalize_location_query(query)
         if not normalized:
             return None
         if "tel aviv" not in normalized.lower() and "תל אביב" not in normalized:
@@ -284,7 +301,7 @@ class NominatimGeocoder:
             raise AnalysisError("Geocoder returned an invalid response")
         candidates = [item for item in cached if isinstance(item, dict)]
         tel_aviv = [item for item in candidates if is_tel_aviv_candidate(item)]
-        selected = (tel_aviv or candidates)[0] if (tel_aviv or candidates) else None
+        selected = tel_aviv[0] if tel_aviv else None
         if not selected:
             return None
         try:
@@ -363,6 +380,7 @@ class ApartmentAnalyzer:
 
     def analyze(self, job: dict[str, Any]) -> dict[str, Any]:
         body = required_text(job.get("body"), "job.body")
+        analysis_body = normalize_listing_text(body)
         extraction = self.model.generate(
             system=(
                 "Extract only facts supported by the Facebook apartment post. "
@@ -378,14 +396,35 @@ class ApartmentAnalyzer:
                 "Classify listing_type as shared for a room or roommates and solo for "
                 "a whole apartment or studio. Distinguish an in-apartment Mamad from "
                 "a building shelter, and never infer protection when it is absent. "
+                "Recognize Mamad even when its Hebrew acronym uses straight quotes, "
+                "Hebrew punctuation, or no punctuation. Recognize miklat as a shelter. "
+                "Hebrew Mamad spellings include \u05de\u05de\u05d3 and \u05de\u05de\"\u05d3; Hebrew shelter is "
+                "\u05de\u05e7\u05dc\u05d8. When the post explicitly contains one of these terms, "
+                "shelter_signal must not be unknown. "
                 "Use 0 for an unknown price. Create a geocoding query only when the "
                 "post gives a street, neighborhood, landmark, or clear area. Do not "
                 "put a fact in unknowns or concerns when the post explicitly states it."
             ),
-            user=f"Facebook post:\n{body}",
+            user=f"Facebook post:\n{analysis_body}",
             schema=EXTRACTION_SCHEMA,
         )
         extraction = validate_extraction(extraction)
+        shelter = self.model.generate(
+            system=(
+                "Classify only the apartment's protection information from the post. "
+                "Return mamad for an in-apartment Mamad, including \u05de\u05de\u05d3 or \u05de\u05de\"\u05d3. "
+                "Return shelter for a building/public shelter, including \u05de\u05e7\u05dc\u05d8. Return "
+                "none only when the post explicitly says neither is accessible. Return "
+                "unknown when protection is not mentioned. Do not infer facts."
+            ),
+            user=f"Facebook post:\n{analysis_body}",
+            schema=SHELTER_SCHEMA,
+        )
+        extraction["shelter_signal"] = enum_text(
+            shelter.get("shelter_signal"),
+            "shelter_signal",
+            {"mamad", "shelter", "none", "unknown"},
+        )
 
         listing_place = self.geocoder.geocode(extraction["location_query"])
         work_place = self.geocoder.geocode(WORK_ADDRESS) if listing_place else None
@@ -410,14 +449,21 @@ class ApartmentAnalyzer:
             system=(
                 "You are the final apartment evaluator. Follow the personal search "
                 "guidelines exactly. Treat route-service values as verified facts. "
-                "Never invent missing details. Consider the complete post and return "
+                "Verified walking times override assumptions based on neighborhood "
+                "names. Do not recommend a listing when both verified walks are far "
+                "beyond the target unless the post explicitly establishes very short "
+                "public transit and the rest of the listing is exceptional. "
+                "Review extracted fields against the complete post and correct any "
+                "inconsistency. In particular, shelter_signal must be mamad when the "
+                "post explicitly says \u05de\u05de\u05d3 or \u05de\u05de\"\u05d3, and shelter when it says "
+                "\u05de\u05e7\u05dc\u05d8. Never invent missing details. Consider the complete post and return "
                 "one of exactly three categories. location_signal must be a concise, "
                 "human-readable location or area label, such as 'Montefiore' or "
                 "'Florentin, 28 min from work'; never return only 'match', 'unknown', "
                 "or another abstract verdict.\n\n" + SEARCH_GUIDELINES
             ),
             user=(
-                f"Facebook post:\n{body}\n\n"
+                f"Facebook post:\n{analysis_body}\n\n"
                 f"Extracted facts:\n{json.dumps(extraction, ensure_ascii=False)}\n\n"
                 f"Verified map facts:\n{json.dumps(route_facts, ensure_ascii=False)}"
             ),
@@ -491,8 +537,55 @@ def map_headers() -> dict[str, str]:
 
 
 def is_tel_aviv_candidate(item: dict[str, Any]) -> bool:
-    label = str(item.get("display_name", "")).casefold()
-    return "tel aviv" in label or "tel-aviv" in label or "תל אביב" in label
+    address = item.get("address")
+    if not isinstance(address, dict):
+        return False
+    municipality_fields = (
+        address.get("city"),
+        address.get("town"),
+        address.get("village"),
+        address.get("municipality"),
+    )
+    return any(is_tel_aviv_name(value) for value in municipality_fields)
+
+
+def canonicalize_location_query(query: str) -> str:
+    normalized = query.strip()
+    folded = normalized.casefold()
+    latin_key = "".join(character for character in folded if character.isalnum())
+
+    montefiore_aliases = ("montefiore", "montefiori", "montifiore", "montifiori")
+    if any(alias in latin_key for alias in montefiore_aliases) or "\u05de\u05d5\u05e0\u05d8\u05d9\u05e4\u05d9\u05d5\u05e8\u05d9" in folded:
+        return "Montefiore, Tel Aviv-Yafo, Israel"
+    if "sarona" in latin_key or "\u05e9\u05e8\u05d5\u05e0\u05d4" in folded:
+        return "Sarona Market, Tel Aviv-Yafo, Israel"
+    return normalized
+
+
+def is_tel_aviv_name(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    normalized = value.casefold()
+    for punctuation in ("-", "\u2013", "\u2014", "\u05be"):
+        normalized = normalized.replace(punctuation, " ")
+    normalized = " ".join(normalized.split())
+    return normalized in {
+        "tel aviv",
+        "tel aviv yafo",
+        "\u05ea\u05dc \u05d0\u05d1\u05d9\u05d1",
+        "\u05ea\u05dc \u05d0\u05d1\u05d9\u05d1 \u05d9\u05e4\u05d5",
+    }
+
+
+def normalize_listing_text(value: str) -> str:
+    return (
+        value.replace("\u05f4", '"')
+        .replace("\u201c", '"')
+        .replace("\u201d", '"')
+        .replace("\u05f3", "'")
+        .replace("\u2018", "'")
+        .replace("\u2019", "'")
+    )
 
 
 def route_dict(route: WalkingRoute | None) -> dict[str, int] | None:
@@ -546,6 +639,11 @@ def validate_verdict(value: dict[str, Any]) -> dict[str, Any]:
         "summary": required_text(value.get("summary"), "summary"),
         "location_signal": required_text(
             value.get("location_signal"), "location_signal"
+        ),
+        "shelter_signal": enum_text(
+            value.get("shelter_signal"),
+            "shelter_signal",
+            {"mamad", "shelter", "none", "unknown"},
         ),
         "positives": string_list(value.get("positives"), "positives"),
         "concerns": string_list(value.get("concerns"), "concerns"),

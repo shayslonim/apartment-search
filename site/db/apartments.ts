@@ -176,6 +176,21 @@ export async function failApartmentAnalysis(
   return Number(updated.meta.changes ?? 0) > 0;
 }
 
+export async function requeueApartmentAnalysis(id: string): Promise<boolean> {
+  await ensureApartmentSchema();
+  const updated = await database()
+    .prepare(
+      `UPDATE apartment_posts
+       SET analysis_status = 'pending', analysis_attempts = 0,
+           analysis_claim_id = NULL, analysis_worker = NULL,
+           analysis_claimed_at = NULL, analysis_error = NULL
+       WHERE id = ? AND analysis_status IN ('complete', 'failed')`,
+    )
+    .bind(id)
+    .run();
+  return Number(updated.meta.changes ?? 0) > 0;
+}
+
 export async function apartmentPostById(id: string): Promise<ApartmentPost | null> {
   await ensureApartmentSchema();
   const row = await database()

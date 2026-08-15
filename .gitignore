@@ -1,0 +1,7 @@
+.apartment-search/
+.venv/
+__pycache__/
+*.py[cod]
+config.json
+.pytest_cache/
+.ruff_cache/

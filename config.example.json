@@ -1,0 +1,44 @@
+{
+  "sources": [
+    {
+      "name": "sample-posts",
+      "type": "json",
+      "path": "sample_posts.json"
+    }
+  ],
+  "criteria": {
+    "work_address": "HaHaskala 3, Tel Aviv",
+    "preferred_areas": [
+      "Montefiore",
+      "Sarona",
+      "HaHaskala 3"
+    ],
+    "max_shared_price_ils": 4000,
+    "stretch_shared_price_ils": 4500,
+    "max_solo_price_ils": 4500,
+    "move_in_months": [
+      "September 2026",
+      "October 2026"
+    ],
+    "minimum_score": 70
+  },
+  "scoring": {
+    "use_openai": false,
+    "openai_model": "gpt-5-mini"
+  },
+  "telegram": {
+    "enabled": false,
+    "bot_token_env": "TELEGRAM_BOT_TOKEN",
+    "chat_id_env": "TELEGRAM_CHAT_ID"
+  },
+  "storage": {
+    "path": ".apartment-search/seen.sqlite3"
+  },
+  "facebook": {
+    "browser_profile_dir": ".apartment-search/browser-profile",
+    "headless": false,
+    "scrolls": 4,
+    "wait_seconds": 3,
+    "wait_for_login": false
+  }
+}

@@ -191,7 +191,7 @@ def serve(
 
 
 def _post_from_payload(raw: Dict[str, Any], index: int) -> ApartmentPost:
-    body = _optional_string(raw.get("body"))
+    body = _first_string(raw.get("body"), raw.get("post_text"), raw.get("text"))
     if not body:
         raise GroupsWatcherPayloadError(f"Post {index} is missing body")
 
@@ -202,8 +202,10 @@ def _post_from_payload(raw: Dict[str, Any], index: int) -> ApartmentPost:
         source=f"groups-watcher:{source_name}",
         text=body,
         url=_optional_string(raw.get("post_url")),
-        posted_at=_optional_string(raw.get("timestamp")),
-        author=_optional_string(raw.get("poster_name")),
+        posted_at=_first_string(
+            raw.get("timestamp"), raw.get("time_posted"), raw.get("posted_unix")
+        ),
+        author=_first_string(raw.get("poster_name"), raw.get("profile_name")),
         raw=raw,
     )
 
@@ -227,3 +229,11 @@ def _optional_string(value: Any) -> Optional[str]:
         return str(value)
     value = value.strip()
     return value or None
+
+
+def _first_string(*values: Any) -> Optional[str]:
+    for value in values:
+        normalized = _optional_string(value)
+        if normalized:
+            return normalized
+    return None

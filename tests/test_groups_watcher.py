@@ -56,6 +56,28 @@ def test_posts_from_batch_delivery():
     ]
 
 
+def test_posts_from_extension_delivery():
+    posts = posts_from_payload(
+        {
+            "message": "New FB Post Detected",
+            "data": {
+                "group_id": "982821351800566",
+                "profile_name": "Carlos Rosmaninho",
+                "post_url": (
+                    "https://www.facebook.com/groups/982821351800566/"
+                    "posts/8787558701326753/"
+                ),
+                "post_text": "MOCK REQUEST",
+                "time_posted": "12/3/2024, 4:50:59 PM",
+            },
+        }
+    )
+
+    assert posts[0].source == "groups-watcher:982821351800566"
+    assert posts[0].text == "MOCK REQUEST"
+    assert posts[0].author == "Carlos Rosmaninho"
+
+
 def test_payload_requires_post_body():
     with pytest.raises(GroupsWatcherPayloadError, match="missing body"):
         posts_from_payload({"data": {"group_name": "Apartments"}})

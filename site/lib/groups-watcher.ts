@@ -42,7 +42,7 @@ function normalizePost(value: unknown, index: number): ApartmentPost {
     throw new GroupsWatcherPayloadError(`Post ${index} must be an object`);
   }
 
-  const text = optionalString(value.body);
+  const text = firstString(value.body, value.post_text, value.text);
   if (!text) {
     throw new GroupsWatcherPayloadError(`Post ${index} is missing body`);
   }
@@ -53,8 +53,8 @@ function normalizePost(value: unknown, index: number): ApartmentPost {
     source: `groups-watcher:${groupName || groupId || "unknown-group"}`,
     text,
     url: optionalString(value.post_url),
-    postedAt: optionalString(value.timestamp),
-    author: optionalString(value.poster_name),
+    postedAt: postedAt(value.timestamp, value.time_posted, value.posted_unix),
+    author: firstString(value.poster_name, value.profile_name),
     groupName,
     raw: value,
   };
@@ -68,4 +68,24 @@ function optionalString(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const normalized = String(value).trim();
   return normalized || null;
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    const normalized = optionalString(value);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function postedAt(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const milliseconds = value < 10_000_000_000 ? value * 1000 : value;
+      return new Date(milliseconds).toISOString();
+    }
+    const normalized = optionalString(value);
+    if (normalized) return normalized;
+  }
+  return null;
 }
